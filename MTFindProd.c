@@ -3,6 +3,8 @@
 #include <pthread.h>
 #include <sys/timeb.h>
 #include <semaphore.h>
+#include <stdbool.h>
+#include <time.h>
 
 #define MAX_SIZE 100000000
 #define MAX_THREADS 16
@@ -82,7 +84,14 @@ int main(int argc, char *argv[]){
 	// Initialize threads, create threads, and then let the parent wait for all threads using pthread_join
 	// The thread start function is ThFindProd
 	// Don't forget to properly initialize shared variables
+	for (i = 0; i < gThreadCount; i++) {
+		pthread_attr_init(&attr[i]);
+		pthread_create(&tid[i], &attr[i], ThFindProd, (void*)&indices[i]);
+	}
 
+	for (i = 0; i < gThreadCount; i++) {
+		pthread_join(tid[i], NULL);
+	}
 
     prod = ComputeTotalProduct();
 	printf("Threaded multiplication with parent waiting for all children completed in %ld ms. Product = %d\n", GetTime(), prod);
@@ -92,11 +101,25 @@ int main(int argc, char *argv[]){
 	SetTime();
 
 	// Write your code here
-    // Don't use any semaphores in this part
+	// Don't use any semaphores in this part
 	// Initialize threads, create threads, and then make the parent continually check on all child threads
 	// The thread start function is ThFindProd
 	// Don't forget to properly initialize shared variables
+	for (i = 0; i < gThreadCount; i++) {
+		pthread_attr_init(&attr[i]);
+		pthread_create(&tid[i], &attr[i], ThFindProd, (void*)&indices[i]);
+	}
 
+	while (gDoneThreadCount < gThreadCount) {
+		// Check if any thread is done
+		for (i = 0; i < gThreadCount; i++) {
+			if (!gThreadDone[i]) {
+				pthread_join(tid[i], NULL);
+				gDoneThreadCount++;
+				gThreadDone[i] = true;
+			}
+		}
+	}
 
     prod = ComputeTotalProduct();
 	printf("Threaded multiplication with parent continually checking on children completed in %ld ms. Product = %d\n", GetTime(), prod);
@@ -109,29 +132,44 @@ int main(int argc, char *argv[]){
 
 	SetTime();
 
-    // Write your code here
+	// Write your code here
 	// Initialize threads, create threads, and then make the parent wait on the "completed" semaphore
 	// The thread start function is ThFindProdWithSemaphore
 	// Don't forget to properly initialize shared variables and semaphores using sem_init
 
+	// Initialize semaphores
+	sem_init(&completed, 0, 0);
+	sem_init(&mutex, 0, 1);
 
+	// Initialize threads and create them
+	for (i = 0; i < gThreadCount; i++) {
+		pthread_attr_init(&attr[i]);
+		pthread_create(&tid[i], &attr[i], ThFindProdWithSemaphore, (void*)&indices[i]);
+	}
 
-    prod = ComputeTotalProduct();
+	// Wait for all threads to complete using the "completed" semaphore
+	for (i = 0; i < gThreadCount; i++) {
+		sem_wait(&completed);
+	}
+
+	prod = ComputeTotalProduct();
 	printf("Threaded multiplication with parent waiting on a semaphore completed in %ld ms. Min = %d\n", GetTime(), prod);
+
 }
+
+
 
 // Write a regular sequential function to multiply all the elements in gData mod NUM_LIMIT
 // REMEMBER TO MOD BY NUM_LIMIT AFTER EACH MULTIPLICATION TO PREVENT YOUR PRODUCT VARIABLE FROM OVERFLOWING
 int SqFindProd(int size) {
+	int i, prod = 1;
 
-}
+	for (i = 0; i < size; i++) {
+		prod *= gData[i];
+		prod %= NUM_LIMIT;
+	}
 
-// Write a thread function that computes the product of all the elements in one division of the array mod NUM_LIMIT
-// REMEMBER TO MOD BY NUM_LIMIT AFTER EACH MULTIPLICATION TO PREVENT YOUR PRODUCT VARIABLE FROM OVERFLOWING
-// When it is done, this function should store the product in gThreadProd[threadNum] and set gThreadDone[threadNum] to true
-void* ThFindProd(void *param) {
-	int threadNum = ((int*)param)[0];
-
+	return prod;
 }
 
 // Write a thread function that computes the product of all the elements in one division of the array mod NUM_LIMIT
@@ -141,9 +179,47 @@ void* ThFindProd(void *param) {
 // If the product value in this division is not zero, this function should increment gDoneThreadCount and
 // post the "completed" semaphore if it is the last thread to be done
 // Don't forget to protect access to gDoneThreadCount with the "mutex" semaphore
-void* ThFindProdWithSemaphore(void *param) {
+void* ThFindProd(void *param) {
+    int *indices = (int *)param;
+    int threadNum = indices[0];
+    int start = indices[1];
+    int end = indices[2];
+    int prod = 1;
 
+    for (int i = start; i <= end; i++) {
+        prod *= gData[i];
+        prod %= NUM_LIMIT;
+    }
+
+    gThreadProd[threadNum] = prod;
+    pthread_exit(NULL);
 }
+void* ThFindProdWithSemaphore(void *param) {
+    int *indices = (int *)param;
+    int threadNum = indices[0];
+    int start = indices[1];
+    int end = indices[2];
+    int prod = 1;
+
+    for (int i = start; i <= end; i++) {
+        prod *= gData[i];
+        prod %= NUM_LIMIT;
+    }
+
+    sem_wait(&mutex); // Protect shared resources
+    gThreadProd[threadNum] = prod;
+    gDoneThreadCount++;
+    if (gDoneThreadCount == gThreadCount) {
+        for (int j = 0; j < gThreadCount; j++) {
+            sem_post(&completed); // Signal completion for all threads
+        }
+    }
+    sem_post(&mutex);
+
+    pthread_exit(NULL);
+}
+
+
 
 int ComputeTotalProduct() {
     int i, prod = 1;
@@ -170,14 +246,37 @@ void InitSharedVars() {
 // Write a function that fills the gData array with random numbers between 1 and MAX_RANDOM_NUMBER
 // If indexForZero is valid and non-negative, set the value at that index to zero
 void GenerateInput(int size, int indexForZero) {
-
+	int i;
+	for (i = 0; i < size; i++) {
+		gData[i] = GetRand(1, MAX_RANDOM_NUMBER);
+	}
+	if (indexForZero >= 0 && indexForZero < size) {
+		gData[indexForZero] = 0;
+	}
 }
 
 // Write a function that calculates the right indices to divide the array into thrdCnt equal divisions
 // For each division i, indices[i][0] should be set to the division number i,
 // indices[i][1] should be set to the start index, and indices[i][2] should be set to the end index
 void CalculateIndices(int arraySize, int thrdCnt, int indices[MAX_THREADS][3]) {
+	int divisionSize = arraySize / thrdCnt;
+	int remainder = arraySize % thrdCnt;
+	int start = 0;
+	int end = divisionSize - 1;
 
+	for (int i = 0; i < thrdCnt; i++) {
+		indices[i][0] = i;
+		indices[i][1] = start;
+		indices[i][2] = end;
+
+		if (remainder > 0) {
+			end++;
+			remainder--;
+		}
+
+		start = end + 1;
+		end = start + divisionSize - 1;
+	}
 }
 
 // Get a random number in the range [x, y]
@@ -195,12 +294,10 @@ long GetMilliSecondTime(struct timeb timeBuf){
 	return mliScndTime;
 }
 
-long GetCurrentTime(void){
-	long crntTime=0;
-	struct timeb timeBuf;
-	ftime(&timeBuf);
-	crntTime = GetMilliSecondTime(timeBuf);
-	return crntTime;
+long GetCurrentTime(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000; // Convert to milliseconds
 }
 
 void SetTime(void){
