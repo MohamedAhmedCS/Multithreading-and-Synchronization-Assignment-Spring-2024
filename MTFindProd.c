@@ -294,10 +294,12 @@ long GetMilliSecondTime(struct timeb timeBuf){
 	return mliScndTime;
 }
 
-long GetCurrentTime(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000; // Convert to milliseconds
+long GetCurrentTime(void){
+	long crntTime=0;
+	struct timeb timeBuf;
+	ftime(&timeBuf);
+	crntTime = GetMilliSecondTime(timeBuf);
+	return crntTime;
 }
 
 void SetTime(void){
