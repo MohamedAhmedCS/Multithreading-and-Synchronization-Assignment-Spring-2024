@@ -1,3 +1,17 @@
+// Mohamed Ahmed
+// CSC 139
+// Assignment 3
+// MTFindProd.c
+// Section: 03
+// Date: 4/28/2024
+// Profesor: Fernando Cantillo 
+// Description: This program is designed to multiply all the elements in an array
+// mod NUM_LIMIT using sequential and multi-threaded approaches. The program generates
+// an array of random numbers and then divides the array into equal divisions for each
+// thread to compute the product of the elements in its division. The program then multiplies
+// the division products to compute the total modular product. The program uses different methods
+// to handle the synchronization between the parent and child threads, including busy waiting and semaphores.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -5,12 +19,16 @@
 #include <semaphore.h>
 #include <stdbool.h>
 #include <time.h>
+#include <string.h>  // Provides declarations for strlen, strchr, etc.
+
 
 #define MAX_SIZE 100000000
 #define MAX_THREADS 16
 #define RANDOM_SEED 7649
 #define MAX_RANDOM_NUMBER 3000
 #define NUM_LIMIT 9973
+
+
 
 // Global variables
 long gRefTime; //For timing
@@ -34,11 +52,50 @@ void GenerateInput(int size, int indexForZero); //Generate the input array
 void CalculateIndices(int arraySize, int thrdCnt, int indices[MAX_THREADS][3]); //Calculate the indices to divide the array into T divisions, one division per thread
 int GetRand(int min, int max);//Get a random number between min and max
 
+
+
 //Timing functions
 long GetMilliSecondTime(struct timeb timeBuf);
 long GetCurrentTime(void);
 void SetTime(void);
 long GetTime(void);
+
+// Parse a size argument with optional 'M' suffix and optional '+' offset
+long parseSizeArgument(char *arg) {
+    long value = 0;
+    char *endptr;
+    int offset = 0; // To handle simple additions
+
+    // Check for addition
+    char *plusSign = strchr(arg, '+');
+    if (plusSign) {
+        *plusSign = '\0'; // Split the string at the '+'
+        offset = strtol(plusSign + 1, &endptr, 10);
+        if (*endptr != '\0') {
+            fprintf(stderr, "Invalid numeric format after +: %s\n", plusSign + 1);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Handle the base number with potential 'M' suffix
+    if (arg[strlen(arg) - 1] == 'M') {
+        arg[strlen(arg) - 1] = '\0'; // Strip the 'M'
+        value = strtol(arg, &endptr, 10);
+        if (*endptr != '\0') {
+            fprintf(stderr, "Invalid numeric format: %s\n", arg);
+            exit(EXIT_FAILURE);
+        }
+        value *= 1000000; // Convert to million
+    } else {
+        value = strtol(arg, &endptr, 10);
+        if (*endptr != '\0') {
+            fprintf(stderr, "Invalid numeric format: %s\n", arg);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return value + offset;
+}
 
 int main(int argc, char *argv[]){
 
@@ -48,28 +105,34 @@ int main(int argc, char *argv[]){
 	int i, indexForZero, arraySize, prod;
 
 	// Code for parsing and checking command-line arguments
-	if(argc != 4){
-		fprintf(stderr, "Invalid number of arguments!\n");
-		exit(-1);
-	}
-	if((arraySize = atoi(argv[1])) <= 0 || arraySize > MAX_SIZE){
-		fprintf(stderr, "Invalid Array Size\n");
-		exit(-1);
-	}
-	gThreadCount = atoi(argv[2]);
-	if(gThreadCount > MAX_THREADS || gThreadCount <=0){
-		fprintf(stderr, "Invalid Thread Count\n");
-		exit(-1);
-	}
-	indexForZero = atoi(argv[3]);
-	if(indexForZero < -1 || indexForZero >= arraySize){
-		fprintf(stderr, "Invalid index for zero!\n");
-		exit(-1);
-	}
+	 if(argc != 4){
+        fprintf(stderr, "Usage: %s <arraySize> <threads> <indexForZero>\n", argv[0]);
+        exit(-1);
+    }
+
+    arraySize = parseSizeArgument(argv[1]);
+    if(arraySize <= 0 || arraySize > MAX_SIZE){
+        fprintf(stderr, "Invalid Array Size\n");
+        exit(-1);
+    }
+
+    gThreadCount = atoi(argv[2]);
+    if(gThreadCount > MAX_THREADS || gThreadCount <=0){
+        fprintf(stderr, "Invalid Thread Count\n");
+        exit(-1);
+    }
+
+    indexForZero = parseSizeArgument(argv[3]);
+    if(indexForZero < -1 || indexForZero >= arraySize){
+        fprintf(stderr, "Invalid index for zero!\n");
+        exit(-1);
+    }
 
     GenerateInput(arraySize, indexForZero);
 
     CalculateIndices(arraySize, gThreadCount, indices);
+
+	
 
 	// Code for the sequential part
 	SetTime();
@@ -105,14 +168,17 @@ int main(int argc, char *argv[]){
 	// Initialize threads, create threads, and then make the parent continually check on all child threads
 	// The thread start function is ThFindProd
 	// Don't forget to properly initialize shared variables
+	
+	// Initialize threads and create them
 	for (i = 0; i < gThreadCount; i++) {
 		pthread_attr_init(&attr[i]);
 		pthread_create(&tid[i], &attr[i], ThFindProd, (void*)&indices[i]);
 	}
-
+	// Continually check on all child threads
 	while (gDoneThreadCount < gThreadCount) {
 		// Check if any thread is done
 		for (i = 0; i < gThreadCount; i++) {
+			// If the thread is not done, join it and mark it as done
 			if (!gThreadDone[i]) {
 				pthread_join(tid[i], NULL);
 				gDoneThreadCount++;
@@ -143,7 +209,9 @@ int main(int argc, char *argv[]){
 
 	// Initialize threads and create them
 	for (i = 0; i < gThreadCount; i++) {
+		// Initialize thread attributes and create threads
 		pthread_attr_init(&attr[i]);
+		// Create threads
 		pthread_create(&tid[i], &attr[i], ThFindProdWithSemaphore, (void*)&indices[i]);
 	}
 
@@ -153,7 +221,7 @@ int main(int argc, char *argv[]){
 	}
 
 	prod = ComputeTotalProduct();
-	printf("Threaded multiplication with parent waiting on a semaphore completed in %ld ms. Min = %d\n", GetTime(), prod);
+	printf("Threaded multiplication with parent waiting on a semaphore completed in %ld ms. Product = %d\n", GetTime(), prod);
 
 }
 
@@ -162,10 +230,12 @@ int main(int argc, char *argv[]){
 // Write a regular sequential function to multiply all the elements in gData mod NUM_LIMIT
 // REMEMBER TO MOD BY NUM_LIMIT AFTER EACH MULTIPLICATION TO PREVENT YOUR PRODUCT VARIABLE FROM OVERFLOWING
 int SqFindProd(int size) {
+	// Initialize the product variable
 	int i, prod = 1;
-
+	// Multiply all the elements in the array
 	for (i = 0; i < size; i++) {
 		prod *= gData[i];
+		// Mod by NUM_LIMIT after each multiplication
 		prod %= NUM_LIMIT;
 	}
 
@@ -179,13 +249,21 @@ int SqFindProd(int size) {
 // If the product value in this division is not zero, this function should increment gDoneThreadCount and
 // post the "completed" semaphore if it is the last thread to be done
 // Don't forget to protect access to gDoneThreadCount with the "mutex" semaphore
+
+// Thread function to compute the product of all the elements in one division of the array
 void* ThFindProd(void *param) {
+	// Get the thread number and the start and end indices for this thread
     int *indices = (int *)param;
+	// Get the thread number
     int threadNum = indices[0];
+	// Get the start and end indices for this thread
     int start = indices[1];
+	// Get the end index for this thread
     int end = indices[2];
+	// Initialize the product variable
     int prod = 1;
 
+// Multiply all the elements in the division
     for (int i = start; i <= end; i++) {
         prod *= gData[i];
         prod %= NUM_LIMIT;
@@ -194,13 +272,15 @@ void* ThFindProd(void *param) {
     gThreadProd[threadNum] = prod;
     pthread_exit(NULL);
 }
+// Write a thread function that computes the product of all the elements in one division of the array mod NUM_LIMIT
 void* ThFindProdWithSemaphore(void *param) {
+	// Get the thread number and the start and end indices for this thread
     int *indices = (int *)param;
     int threadNum = indices[0];
     int start = indices[1];
     int end = indices[2];
     int prod = 1;
-
+	// Multiply all the elements in the division
     for (int i = start; i <= end; i++) {
         prod *= gData[i];
         prod %= NUM_LIMIT;
@@ -209,6 +289,7 @@ void* ThFindProdWithSemaphore(void *param) {
     sem_wait(&mutex); // Protect shared resources
     gThreadProd[threadNum] = prod;
     gDoneThreadCount++;
+	// If the product value in this division is zero, post the "completed" semaphore
     if (gDoneThreadCount == gThreadCount) {
         for (int j = 0; j < gThreadCount; j++) {
             sem_post(&completed); // Signal completion for all threads
@@ -245,11 +326,15 @@ void InitSharedVars() {
 
 // Write a function that fills the gData array with random numbers between 1 and MAX_RANDOM_NUMBER
 // If indexForZero is valid and non-negative, set the value at that index to zero
+
+// Generate the input array
 void GenerateInput(int size, int indexForZero) {
 	int i;
+	// Generate random numbers between 1 and MAX_RANDOM_NUMBER
 	for (i = 0; i < size; i++) {
 		gData[i] = GetRand(1, MAX_RANDOM_NUMBER);
 	}
+	// Set the value at indexForZero to zero if it is valid and non-negative
 	if (indexForZero >= 0 && indexForZero < size) {
 		gData[indexForZero] = 0;
 	}
@@ -258,17 +343,20 @@ void GenerateInput(int size, int indexForZero) {
 // Write a function that calculates the right indices to divide the array into thrdCnt equal divisions
 // For each division i, indices[i][0] should be set to the division number i,
 // indices[i][1] should be set to the start index, and indices[i][2] should be set to the end index
+
+// Calculate the indices to divide the array into thrdCnt equal divisions
 void CalculateIndices(int arraySize, int thrdCnt, int indices[MAX_THREADS][3]) {
+	// Calculate the division size and remainder
 	int divisionSize = arraySize / thrdCnt;
 	int remainder = arraySize % thrdCnt;
 	int start = 0;
 	int end = divisionSize - 1;
-
+	// Calculate the indices for each division
 	for (int i = 0; i < thrdCnt; i++) {
 		indices[i][0] = i;
 		indices[i][1] = start;
 		indices[i][2] = end;
-
+		// Adjust the end index if there is a remainder
 		if (remainder > 0) {
 			end++;
 			remainder--;
