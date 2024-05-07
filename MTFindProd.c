@@ -268,7 +268,12 @@ void* ThFindProd(void *param) {
         prod *= gData[i];
         prod %= NUM_LIMIT;
     }
+// Lock the mutex before accessing gThreadProd
+    pthread_mutex_lock(&mutex);
+    gThreadProd[threadNum] = prod;
+    pthread_mutex_unlock(&mutex);  // Unlock the mutex after modification
 
+	
     gThreadProd[threadNum] = prod;
     pthread_exit(NULL);
 }
