@@ -1,3 +1,4 @@
+
 // Mohamed Ahmed
 // CSC 139
 // Assignment 3
@@ -5,6 +6,7 @@
 // Section: 03
 // Date: 4/28/2024
 // Profesor: Fernando Cantillo 
+
 // Description: This program is designed to multiply all the elements in an array
 // mod NUM_LIMIT using sequential and multi-threaded approaches. The program generates
 // an array of random numbers and then divides the array into equal divisions for each
@@ -12,6 +14,9 @@
 // the division products to compute the total modular product. The program uses different methods
 // to handle the synchronization between the parent and child threads, including busy waiting and semaphores.
 
+// The program is run from the command line using : g++ -O3 MTFindProd.c -o MTFindProd -lpthread
+// To input use this format: ./MTFindProd <arraySize> <threads> <indexForZero>
+// The program will output the time taken for each approach and the final product.
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -268,11 +273,6 @@ void* ThFindProd(void *param) {
         prod *= gData[i];
         prod %= NUM_LIMIT;
     }
-// Lock the mutex before accessing gThreadProd
-    pthread_mutex_lock(&mutex);
-    gThreadProd[threadNum] = prod;
-    pthread_mutex_unlock(&mutex);  // Unlock the mutex after modification
-
 	
     gThreadProd[threadNum] = prod;
     pthread_exit(NULL);
@@ -304,8 +304,6 @@ void* ThFindProdWithSemaphore(void *param) {
 
     pthread_exit(NULL);
 }
-
-
 
 int ComputeTotalProduct() {
     int i, prod = 1;
