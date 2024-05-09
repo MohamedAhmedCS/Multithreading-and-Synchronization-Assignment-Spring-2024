@@ -5,7 +5,9 @@
 // MTFindProd.c
 // Section: 03
 // Date: 4/28/2024
-// Profesor: Fernando Cantillo 
+// Profesor: Fernando Cantillo
+// Tested in: Linux 
+//Number of physical cores:4
 
 // Description: This program is designed to multiply all the elements in an array
 // mod NUM_LIMIT using sequential and multi-threaded approaches. The program generates
